@@ -31,7 +31,7 @@ class Catalog:
             """)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS books (
-                    id INTEGER PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
                     category TEXT NOT NULL REFERENCES categories(name)
                 )
@@ -67,6 +67,15 @@ class Catalog:
             cursor.execute(query + " ORDER BY b.id", params)
             return tuple(Book(*row) for row in cursor.fetchall())
 
+    def delete_book(self, book_id: int) -> bool:
+        """Удалить одну книгу по ID и сообщить, была ли она в каталоге."""
+        if type(book_id) is not int or not 1 <= book_id <= 2**63 - 1:
+            raise ValueError("ID книги должен быть в пределах от 1 до 2^63-1.")
+        with self.connection, closing(self.connection.cursor()) as cursor:
+            cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+            deleted = cursor.rowcount == 1
+        return deleted
+
     def close(self) -> None:
         """Закрыть соединение с базой."""
         self.connection.close()
@@ -75,6 +84,5 @@ class Catalog:
 def open_sqlite(path: str | Path) -> Catalog:
     """Открыть файл SQLite или создать его по указанному пути."""
     connection = sqlite3.connect(path)
-    with closing(connection.execute("PRAGMA foreign_keys = ON")):
-        pass
+    connection.execute("PRAGMA foreign_keys = ON").close()
     return Catalog(connection)

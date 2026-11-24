@@ -20,7 +20,8 @@ class SQLiteTests(unittest.TestCase):
         self.assertTrue(self.path.is_file())
         with closing(sqlite3.connect(self.path)) as database:
             tables = database.execute("""
-                SELECT name FROM sqlite_master WHERE type = 'table'
+                SELECT name FROM sqlite_master
+                WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
             """).fetchall()
         self.assertEqual(set(tables), {("books",), ("categories",)})
 
@@ -63,3 +64,24 @@ class SQLiteTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.catalog.add_book(title, category)
         self.assertEqual(self.catalog.list_books(), ())
+
+    def test_delete_persists_and_leaves_other_books(self) -> None:
+        first = self.catalog.add_book("Дюна", "Романы")
+        second = self.catalog.add_book("Основание", "Романы")
+        self.assertTrue(self.catalog.delete_book(first))
+        self.assertFalse(self.catalog.delete_book(first))
+        with closing(open_sqlite(self.path)) as reopened:
+            self.assertEqual(reopened.list_books(), (
+                Book(second, "Основание", "Романы"),
+            ))
+
+    def test_deleted_id_is_not_reused(self) -> None:
+        book_id = self.catalog.add_book("Дюна", "Романы")
+        self.catalog.delete_book(book_id)
+        self.assertGreater(self.catalog.add_book("Солярис", "Романы"), book_id)
+
+    def test_invalid_id_is_rejected(self) -> None:
+        for book_id in (0, -1, True, 2**63):
+            with self.subTest(book_id=book_id):
+                with self.assertRaises(ValueError):
+                    self.catalog.delete_book(book_id)
