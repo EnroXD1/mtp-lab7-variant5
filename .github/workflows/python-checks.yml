@@ -1,0 +1,46 @@
+name: Python checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: lab7
+          POSTGRES_DB: lab7
+          POSTGRES_PASSWORD: lab7-ci
+        ports:
+          - 55472:5432
+        options: >-
+          --health-cmd "pg_isready -U lab7 -d lab7"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m flake8 lab7 main.py tests
+      - run: python -m compileall -q lab7 main.py tests
+      - name: Run SQLite and PostgreSQL tests
+        env:
+          LAB7_TEST_PG_DSN: host=127.0.0.1 port=55472 dbname=lab7 user=lab7
+          PGPASSWORD: lab7-ci
+        run: python -X utf8 -m unittest discover -s tests -v
