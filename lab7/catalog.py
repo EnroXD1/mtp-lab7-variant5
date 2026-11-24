@@ -1,9 +1,14 @@
-"""Хранение книг в локальной базе SQLite."""
+"""Запросы каталога, общие для SQLite и PostgreSQL."""
+
+from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from psycopg2.extensions import connection as PostgresConnection
 
 
 class Book(NamedTuple):
@@ -17,7 +22,12 @@ class Book(NamedTuple):
 class Catalog:
     """Объект каталога владеет одним соединением с базой."""
 
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    _id_column = "INTEGER PRIMARY KEY AUTOINCREMENT"
+    _param = "?"
+
+    def __init__(
+        self, connection: sqlite3.Connection | PostgresConnection,
+    ) -> None:
         self.connection = connection
 
     def initialize(self) -> None:
@@ -29,9 +39,9 @@ class Catalog:
                     CHECK (length(trim(name)) > 0)
                 )
             """)
-            cursor.execute("""
+            cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS books (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {self._id_column},
                     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
                     category TEXT NOT NULL REFERENCES categories(name)
                 )
@@ -42,13 +52,15 @@ class Catalog:
         title, category = title.strip(), category.strip()
         if not title or not category:
             raise ValueError("Название и категория не должны быть пустыми.")
+        param = self._param
         with self.connection, closing(self.connection.cursor()) as cursor:
-            cursor.execute("""
-                INSERT INTO categories (name) VALUES (?)
+            cursor.execute(f"""
+                INSERT INTO categories (name) VALUES ({param})
                 ON CONFLICT (name) DO NOTHING
             """, (category,))
-            cursor.execute("""
-                INSERT INTO books (title, category) VALUES (?, ?) RETURNING id
+            cursor.execute(f"""
+                INSERT INTO books (title, category) VALUES ({param}, {param})
+                RETURNING id
             """, (title, category))
             book_id, = cursor.fetchone()
         return book_id
@@ -61,7 +73,7 @@ class Catalog:
         """
         params = ()
         if category is not None:
-            query += " WHERE c.name = ?"
+            query += f" WHERE c.name = {self._param}"
             params = (category,)
         with self.connection, closing(self.connection.cursor()) as cursor:
             cursor.execute(query + " ORDER BY b.id", params)
@@ -72,7 +84,9 @@ class Catalog:
         if type(book_id) is not int or not 1 <= book_id <= 2**63 - 1:
             raise ValueError("ID книги должен быть в пределах от 1 до 2^63-1.")
         with self.connection, closing(self.connection.cursor()) as cursor:
-            cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+            cursor.execute(
+                f"DELETE FROM books WHERE id = {self._param}", (book_id,),
+            )
             deleted = cursor.rowcount == 1
         return deleted
 
