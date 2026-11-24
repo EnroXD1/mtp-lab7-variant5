@@ -17,7 +17,7 @@ class CacheTests(unittest.TestCase):
         if query.lstrip().startswith("SELECT"):
             self.selects.append(query)
 
-    def test_repeat_skips_sql_and_different_filters_have_separate_keys(self):
+    def test_repeat_skips_sql_and_filters_have_separate_keys(self) -> None:
         book_id = self.catalog.add_book("Дюна", "Романы")
         expected = (Book(book_id, "Дюна", "Романы"),)
         self.assertEqual(self.catalog.list_books(), expected)

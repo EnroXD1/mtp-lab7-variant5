@@ -16,4 +16,8 @@ def open_postgres(dsn: str) -> PostgresCatalog:
     """Открыть настроенную базу данных с ограничением времени подключения."""
     if not dsn.strip():
         raise ValueError("Укажи параметры подключения в LAB7_PG_DSN.")
-    return PostgresCatalog(psycopg2.connect(dsn, connect_timeout=5))
+    try:
+        connection = psycopg2.connect(dsn, connect_timeout=5)
+    except psycopg2.ProgrammingError:
+        raise ValueError("Неверный формат LAB7_PG_DSN.") from None
+    return PostgresCatalog(connection)
