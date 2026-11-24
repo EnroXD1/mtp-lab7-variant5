@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -29,6 +30,7 @@ class Catalog:
         self, connection: sqlite3.Connection | PostgresConnection,
     ) -> None:
         self.connection = connection
+        self._cached_books = lru_cache(maxsize=32)(self._select_books)
 
     def initialize(self) -> None:
         """Создать две связанные таблицы, сохранив существующие записи."""
@@ -63,10 +65,19 @@ class Catalog:
                 RETURNING id
             """, (title, category))
             book_id, = cursor.fetchone()
+        self._cached_books.cache_clear()
         return book_id
 
     def list_books(self, category: str | None = None) -> tuple[Book, ...]:
-        """Найти все книги или книги выбранной категории."""
+        """Вернуть результат выборки с кэшем для каждого фильтра."""
+        return self._cached_books(category)
+
+    def cache_counts(self) -> tuple[int, int]:
+        """Вернуть число попаданий и промахов кэша с последней очистки."""
+        info = self._cached_books.cache_info()
+        return info.hits, info.misses
+
+    def _select_books(self, category: str | None) -> tuple[Book, ...]:
         query = """
             SELECT b.id, b.title, c.name
             FROM books b JOIN categories c ON b.category = c.name
@@ -88,6 +99,8 @@ class Catalog:
                 f"DELETE FROM books WHERE id = {self._param}", (book_id,),
             )
             deleted = cursor.rowcount == 1
+        if deleted:
+            self._cached_books.cache_clear()
         return deleted
 
     def close(self) -> None:

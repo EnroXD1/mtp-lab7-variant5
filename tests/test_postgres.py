@@ -40,8 +40,10 @@ class PostgresTests(unittest.TestCase):
         self.assertEqual(self.catalog.list_books("Романы"), (
             Book(remove, "Дюна", "Романы"),
         ))
+        self.assertEqual(len(self.catalog.list_books()), 2)
         self.assertTrue(self.catalog.delete_book(remove))
         self.assertFalse(self.catalog.delete_book(remove))
+        self.assertEqual(self.catalog.list_books("Романы"), ())
         self.assertEqual(self.catalog.list_books(), (
             Book(keep, "O'Reilly", "IT"),
         ))
